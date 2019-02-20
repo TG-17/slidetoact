@@ -9,13 +9,17 @@
             <enum name="italic" value="2" />
         </attr>
         <attr name="area_margin" format="dimension" />
+        <attr name="border_color" format="color" />
         <attr name="inner_color" format="color" />
         <attr name="outer_color" format="color" />
         <attr name="text_color" format="color" />
         <attr name="border_radius" format="dimension" />
         <attr name="slider_height" format="dimension" />
+        <attr name="grace_value" format="float" />
         <attr name="slider_locked" format="boolean" />
         <attr name="slider_icon" format="reference" />
+        <attr name="fill_bg_gradient_start" format="color" />
+        <attr name="fill_bg_gradient_end" format="color" />
         <attr name="rotate_icon" format="boolean" />
         <attr name="animate_completion" format="boolean" />
     </declare-styleable>

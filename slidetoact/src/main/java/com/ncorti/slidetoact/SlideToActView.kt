@@ -14,6 +14,7 @@ import android.support.annotation.RequiresApi
 import android.support.graphics.drawable.AnimatedVectorDrawableCompat
 import android.support.graphics.drawable.VectorDrawableCompat
 import android.support.v4.content.ContextCompat
+import android.support.v4.content.res.ResourcesCompat
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.util.Xml
@@ -31,7 +32,7 @@ import org.xmlpull.v1.XmlPullParserException
  *  SlideToActView is an elegant material designed slider, that enrich your app
  *  with a "Slide-to-unlock" like widget.
  */
-class SlideToActView @JvmOverloads constructor (
+class SlideToActView @JvmOverloads constructor(
         context: Context,
         attrs: AttributeSet? = null,
         defStyleAttr: Int = R.attr.slideToActViewStyle
@@ -69,7 +70,7 @@ class SlideToActView @JvmOverloads constructor (
     var typeFace = Typeface.NORMAL
         set(value) {
             field = value
-            mTextPaint.typeface = Typeface.create("sans-serif-light" , value)
+            mTextPaint.typeface = Typeface.create("sans-serif-light", value)
             invalidate()
         }
 
@@ -80,12 +81,32 @@ class SlideToActView @JvmOverloads constructor (
     private var mTextXPosition = -1f
 
     /** Outer color used by the slider (primary) */
+    var borderColor: Int = 0
+        set(value) {
+            field = value
+            mOuterStrokePaint.color = value
+            mOuterStrokePaint.style = Paint.Style.STROKE
+            mOuterStrokePaint.strokeWidth = 10f
+            invalidate()
+        }
+
     var outerColor: Int = 0
         set(value) {
             field = value
             mOuterPaint.color = value
-            mDrawableArrow.setTint(value)
             invalidate()
+        }
+
+    var fillGradientColorStart: Int = 0
+        set(value) {
+            field = value
+            requestLayout()
+        }
+
+    var fillGradientColorEnd: Int = 0
+        set(value) {
+            field = value
+            requestLayout()
         }
 
     /** Inner color used by the slider (secondary, icon and border) */
@@ -93,6 +114,7 @@ class SlideToActView @JvmOverloads constructor (
         set(value) {
             field = value
             mInnerPaint.color = value
+            mInnerPaint.setShadowLayer(12f, 0f, 10f, ResourcesCompat.getColor(resources, R.color.buttonShadow, context.theme));
             invalidate()
         }
 
@@ -116,6 +138,10 @@ class SlideToActView @JvmOverloads constructor (
             mPositionPerc = value.toFloat() / (mAreaWidth - mAreaHeight).toFloat()
             mPositionPercInv = 1 - value.toFloat() / (mAreaWidth - mAreaHeight).toFloat()
         }
+
+    // The x Position of the background gradient
+    private var mFillGradientPosition = 0f
+
     /** Slider cursor position in percentage (between 0f and 1f) */
     private var mPositionPerc: Float = 0f
     /** 1/mPositionPerc */
@@ -145,6 +171,10 @@ class SlideToActView @JvmOverloads constructor (
     /** Paint used for outer elements */
     private val mOuterPaint: Paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+    private val mFillGradientPaint: Paint = Paint()
+
+    private val mOuterStrokePaint: Paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     /** Paint used for inner elements */
     private val mInnerPaint: Paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -155,8 +185,10 @@ class SlideToActView @JvmOverloads constructor (
     private var mInnerRect: RectF
     /** Outer rectangle (used for area drawing) */
     private var mOuterRect: RectF
-    /** Grace value, when mPositionPerc > mGraceValue slider will perform the 'complete' operations */
-    private val mGraceValue: Float = 0.8F
+    /** Outer rectangle (used for area drawing) */
+    private val mBorderRect = RectF()
+    /** Outer gradient on swiped area (used for area drawing) */
+    private var mFillGradientRect: RectF
 
     /** Last X coordinate for the touch event */
     private var mLastX: Float = 0F
@@ -165,6 +197,9 @@ class SlideToActView @JvmOverloads constructor (
 
     /** Private flag to check if the slide gesture have been completed */
     private var mIsCompleted = false
+
+    /** Grace value, when mPositionPerc > graceValue slider will perform the 'complete' operations */
+    var graceValue: Float = 0.5F
 
     /** Public flag to lock the slider */
     var isLocked = false
@@ -182,12 +217,15 @@ class SlideToActView @JvmOverloads constructor (
     var onSlideUserFailedListener: OnSlideUserFailedListener? = null
 
     init {
-        val actualOuterColor : Int
-        val actualInnerColor : Int
-        val actualTextColor : Int
+        val actualBorderColor: Int
+        val actualOuterColor: Int
+        val actualInnerColor: Int
+        val actualFillGradientColorStart: Int
+        val actualFillGradientColorEnd: Int
+        val actualTextColor: Int
 
         val layoutAttrs: TypedArray = context.theme.obtainStyledAttributes(attrs,
-            R.styleable.SlideToActView, defStyleAttr, R.style.SlideToActView)
+                R.styleable.SlideToActView, defStyleAttr, R.style.SlideToActView)
         try {
             mDesiredSliderHeight = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, mDesiredSliderHeightDp, resources.displayMetrics).toInt()
             mDesiredSliderWidth = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, mDesiredSliderWidthDp, resources.displayMetrics).toInt()
@@ -195,17 +233,22 @@ class SlideToActView @JvmOverloads constructor (
 
             mBorderRadius = layoutAttrs.getDimensionPixelSize(R.styleable.SlideToActView_border_radius, -1)
 
+            val defaultFillGradient = ContextCompat.getColor(this.context, android.R.color.transparent)
             val defaultOuter = ContextCompat.getColor(this.context, R.color.defaultAccent)
             val defaultWhite = ContextCompat.getColor(this.context, R.color.white)
 
+            actualBorderColor = layoutAttrs.getColor(R.styleable.SlideToActView_border_color, defaultOuter)
             actualOuterColor = layoutAttrs.getColor(R.styleable.SlideToActView_outer_color, defaultOuter)
             actualInnerColor = layoutAttrs.getColor(R.styleable.SlideToActView_inner_color, defaultWhite)
+            actualFillGradientColorStart = layoutAttrs.getColor(R.styleable.SlideToActView_fill_bg_gradient_start, defaultFillGradient)
+            actualFillGradientColorEnd = layoutAttrs.getColor(R.styleable.SlideToActView_fill_bg_gradient_end, defaultFillGradient)
             actualTextColor = layoutAttrs.getColor(R.styleable.SlideToActView_text_color, defaultWhite)
 
             text = layoutAttrs.getString(R.styleable.SlideToActView_text)
             typeFace = layoutAttrs.getInt(R.styleable.SlideToActView_text_style, 0)
 
             isLocked = layoutAttrs.getBoolean(R.styleable.SlideToActView_slider_locked, false)
+            graceValue = layoutAttrs.getFloat(R.styleable.SlideToActView_grace_value, graceValue)
             isRotateIcon = layoutAttrs.getBoolean(R.styleable.SlideToActView_rotate_icon, true)
             isAnimateCompletion = layoutAttrs.getBoolean(R.styleable.SlideToActView_animate_completion, true)
 
@@ -218,12 +261,13 @@ class SlideToActView @JvmOverloads constructor (
             layoutAttrs.recycle()
         }
 
+        mFillGradientRect = RectF()
+
         mInnerRect = RectF((mActualAreaMargin + mPosition).toFloat(), mActualAreaMargin.toFloat(),
-            (mAreaHeight + mPosition).toFloat() - mActualAreaMargin.toFloat(),
-            mAreaHeight.toFloat() - mActualAreaMargin.toFloat())
+                (mAreaHeight + mPosition).toFloat() - mActualAreaMargin.toFloat(),
+                mAreaHeight.toFloat() - mActualAreaMargin.toFloat())
 
         mOuterRect = RectF(mActualAreaWidth.toFloat(), 0f, mAreaWidth.toFloat() - mActualAreaWidth.toFloat(), mAreaHeight.toFloat())
-
         mDrawableArrow = parseVectorDrawableCompat(context.resources, mIcon, context.theme)
 
         // Due to bug in the AVD implementation in the support library, we use it only for API < 21
@@ -236,8 +280,11 @@ class SlideToActView @JvmOverloads constructor (
         mTextPaint.textAlign = Paint.Align.CENTER
         mTextPaint.textSize = mTextSize.toFloat()
 
+        borderColor = actualBorderColor
         outerColor = actualOuterColor
         innerColor = actualInnerColor
+        fillGradientColorStart = actualFillGradientColorStart
+        fillGradientColorEnd = actualFillGradientColorEnd
         textColor = actualTextColor
 
         mIconMargin = context.resources.getDimensionPixelSize(R.dimen.default_icon_margin)
@@ -248,6 +295,8 @@ class SlideToActView @JvmOverloads constructor (
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             outlineProvider = SlideToActOutlineProvider()
         }
+
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
     private fun parseVectorDrawableCompat(res: Resources, resId: Int, theme: Resources.Theme): VectorDrawableCompat {
@@ -286,6 +335,9 @@ class SlideToActView @JvmOverloads constructor (
         // Text horizontal/vertical positioning (both centered)
         mTextXPosition = mAreaWidth.toFloat() / 2
         mTextYPosition = (mAreaHeight.toFloat() / 2) - (mTextPaint.descent() + mTextPaint.ascent()) / 2
+
+        // fill gradient
+        mFillGradientPaint.shader = LinearGradient(0f, 0f, mAreaWidth.toFloat(), 0f, fillGradientColorStart, fillGradientColorEnd, Shader.TileMode.CLAMP);
     }
 
     override fun onDraw(canvas: Canvas?) {
@@ -296,14 +348,16 @@ class SlideToActView @JvmOverloads constructor (
         mOuterRect.set(mActualAreaWidth.toFloat(), 0f, mAreaWidth.toFloat() - mActualAreaWidth.toFloat(), mAreaHeight.toFloat())
         canvas.drawRoundRect(mOuterRect, mBorderRadius.toFloat(), mBorderRadius.toFloat(), mOuterPaint)
 
-        // Inner Cursor
-        // ratio is used to compute the proper border radius for the inner rect (see #8).
-        val ratio = (mAreaHeight - 2 * mActualAreaMargin).toFloat() / mAreaHeight.toFloat()
-        mInnerRect.set((mActualAreaMargin + mPosition).toFloat(),
-                mActualAreaMargin.toFloat(),
-                (mAreaHeight + mPosition).toFloat() - mActualAreaMargin.toFloat(),
-                mAreaHeight.toFloat() - mActualAreaMargin.toFloat())
-        canvas.drawRoundRect(mInnerRect, mBorderRadius.toFloat() * ratio, mBorderRadius.toFloat() * ratio, mInnerPaint)
+        // fill gradient
+        val gradientRight = Math.min(mFillGradientPosition, mOuterRect.right)
+        mFillGradientRect.set(mOuterRect.left, mOuterRect.top, gradientRight, mOuterRect.bottom)
+        mFillGradientPaint.alpha = (255f / graceValue * Math.min(mPositionPerc, graceValue)).toInt()
+        canvas.drawRoundRect(mFillGradientRect, mBorderRadius.toFloat(), mBorderRadius.toFloat(), mFillGradientPaint)
+
+        // Outer border
+        val halfStrokeWidth = mOuterStrokePaint.strokeWidth * 0.5f // due to the radius we can't have it 0.5
+        mBorderRect.set(mOuterRect.left + halfStrokeWidth, halfStrokeWidth, mOuterRect.right - halfStrokeWidth, mOuterRect.bottom - halfStrokeWidth)
+        canvas.drawRoundRect(mBorderRect, mBorderRadius.toFloat() - halfStrokeWidth, mBorderRadius.toFloat(), mOuterStrokePaint)
 
         // Text alpha
         mTextPaint.alpha = (255 * mPositionPercInv).toInt()
@@ -311,17 +365,29 @@ class SlideToActView @JvmOverloads constructor (
         // Vertical + Horizontal centering
         canvas.drawText(text.toString(), mTextXPosition, mTextYPosition, mTextPaint)
 
+        // Inner Cursor
+        mInnerRect.set((mActualAreaMargin + mPosition).toFloat(),
+                mActualAreaMargin.toFloat(),
+                (mAreaHeight + mPosition).toFloat() - mActualAreaMargin.toFloat(),
+                mAreaHeight.toFloat() - mActualAreaMargin.toFloat())
+
+        // ratio is used to compute the proper border radius for the inner rect (see #8).
+        val ratio = (mAreaHeight - 2 * mActualAreaMargin).toFloat() / mAreaHeight.toFloat()
+        val btnRadius = height / 2
+        canvas.drawRoundRect(mInnerRect, btnRadius * ratio, btnRadius * ratio, mInnerPaint)
+
+
         // Arrow angle
         if (isRotateIcon) {
             mArrowAngle = -180 * mPositionPerc
             canvas.rotate(mArrowAngle, mInnerRect.centerX(), mInnerRect.centerY())
         }
         mDrawableArrow.setBounds(mInnerRect.left.toInt() + mArrowMargin,
-            mInnerRect.top.toInt() + mArrowMargin,
-            mInnerRect.right.toInt() - mArrowMargin,
-            mInnerRect.bottom.toInt() - mArrowMargin)
+                mInnerRect.top.toInt() + mArrowMargin,
+                mInnerRect.right.toInt() - mArrowMargin,
+                mInnerRect.bottom.toInt() - mArrowMargin)
         if (mDrawableArrow.bounds.left <= mDrawableArrow.bounds.right &&
-            mDrawableArrow.bounds.top <= mDrawableArrow.bounds.bottom) {
+                mDrawableArrow.bounds.top <= mDrawableArrow.bounds.bottom) {
             mDrawableArrow.draw(canvas)
         }
 
@@ -329,23 +395,23 @@ class SlideToActView @JvmOverloads constructor (
             canvas.rotate(-1 * mArrowAngle, mInnerRect.centerX(), mInnerRect.centerY())
         }
 
-        // Tick drawing
-        mDrawableTick.setBounds(
-            mActualAreaWidth + mTickMargin,
-            mTickMargin,
-            mAreaWidth - mTickMargin - mActualAreaWidth,
-            mAreaHeight - mTickMargin)
+        // Tick drawing (v at the end of the collapsing animation)
+//        mDrawableTick.setBounds(
+//                mActualAreaWidth + mTickMargin,
+//                mTickMargin,
+//                mAreaWidth - mTickMargin - mActualAreaWidth,
+//                mAreaHeight - mTickMargin)
+//
+////         Tinting the tick with the proper implementation method
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+//            mDrawableTick.setTint(innerColor)
+//        } else {
+//            (mDrawableTick as AnimatedVectorDrawableCompat).setTint(innerColor)
+//        }
 
-        // Tinting the tick with the proper implementation method
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            mDrawableTick.setTint(innerColor)
-        } else {
-            (mDrawableTick as AnimatedVectorDrawableCompat).setTint(innerColor)
-        }
-
-        if (mFlagDrawTick) {
-            mDrawableTick.draw(canvas)
-        }
+//        if (mFlagDrawTick) {
+//            mDrawableTick.draw(canvas)
+//        }
     }
 
     // Intentionally override `performClick` to do not lose accessibility support.
@@ -370,7 +436,7 @@ class SlideToActView @JvmOverloads constructor (
                 }
                 MotionEvent.ACTION_UP -> {
                     parent.requestDisallowInterceptTouchEvent(false)
-                    if ((mPosition > 0 && isLocked) || (mPosition > 0 && mPositionPerc < mGraceValue)) {
+                    if ((mPosition > 0 && isLocked) || (mPosition > 0 && mPositionPerc < graceValue)) {
                         // Check for grace value
                         val positionAnimator = ValueAnimator.ofInt(mPosition, 0)
                         positionAnimator.duration = 300
@@ -379,7 +445,7 @@ class SlideToActView @JvmOverloads constructor (
                             invalidateArea()
                         }
                         positionAnimator.start()
-                    } else if (mPosition > 0 && mPositionPerc >= mGraceValue) {
+                    } else if (mPosition > 0 && mPositionPerc >= graceValue) {
                         isEnabled = false // Fully disable touch events
                         startAnimationComplete()
                     } else if (mFlagMoving && mPosition == 0) {
@@ -426,10 +492,14 @@ class SlideToActView @JvmOverloads constructor (
      */
     private fun increasePosition(inc: Int) {
         mPosition += inc
-        if (mPosition < 0)
+        if (mPosition < 0) {
             mPosition = 0
-        if (mPosition > (mAreaWidth - mAreaHeight))
+        }
+        if (mPosition > (mAreaWidth - mAreaHeight)) {
             mPosition = mAreaWidth - mAreaHeight
+        }
+
+        mFillGradientPosition = mPosition + mInnerRect.width() * 0.75f
     }
 
     /**
@@ -442,6 +512,13 @@ class SlideToActView @JvmOverloads constructor (
         val finalPositionAnimator = ValueAnimator.ofInt(mPosition, mAreaWidth - mAreaHeight)
         finalPositionAnimator.addUpdateListener {
             mPosition = it.animatedValue as Int
+            invalidateArea()
+        }
+
+        // Animator that moves the gradient fill
+        val gradientAnimator = ValueAnimator.ofFloat(mFillGradientPosition, mOuterRect.right)
+        gradientAnimator.addUpdateListener {
+            mFillGradientPosition = it.animatedValue as Float
             invalidateArea()
         }
 
@@ -497,6 +574,7 @@ class SlideToActView @JvmOverloads constructor (
             animators.add(tickAnimator)
         }
 
+        animSet.play(gradientAnimator)
         animSet.playSequentially(*animators.toTypedArray())
 
         animSet.duration = 300
@@ -579,6 +657,12 @@ class SlideToActView @JvmOverloads constructor (
             invalidateArea()
         }
 
+        val fillGradientAnimator = ValueAnimator.ofFloat(mFillGradientPosition, 0f)
+        fillGradientAnimator.addUpdateListener {
+            mFillGradientPosition = it.animatedValue as Float
+            invalidateArea()
+        }
+
         // Animator that re-draw the cursors
         val marginAnimator = ValueAnimator.ofInt(mActualAreaMargin, mOriginAreaMargin)
         marginAnimator.addUpdateListener {
@@ -598,9 +682,9 @@ class SlideToActView @JvmOverloads constructor (
         marginAnimator.interpolator = OvershootInterpolator(2f)
 
         if (isAnimateCompletion) {
-            animSet.playSequentially(tickAnimator, areaAnimator, positionAnimator, marginAnimator, arrowAnimator)
+            animSet.playSequentially(tickAnimator, areaAnimator, positionAnimator, fillGradientAnimator, marginAnimator, arrowAnimator)
         } else {
-            animSet.playSequentially(positionAnimator)
+            animSet.playSequentially(positionAnimator, fillGradientAnimator)
         }
 
         animSet.duration = 300
@@ -744,7 +828,7 @@ class SlideToActView @JvmOverloads constructor (
             if (view == null || outline == null)
                 return
 
-            outline.setRoundRect(mActualAreaWidth, 0, mAreaWidth - mActualAreaWidth, mAreaHeight,mBorderRadius.toFloat())
+            outline.setRoundRect(mActualAreaWidth, 0, mAreaWidth - mActualAreaWidth, mAreaHeight, mBorderRadius.toFloat())
         }
     }
 }

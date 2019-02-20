@@ -24,7 +24,18 @@
             android:layout_height="wrap_content"
             android:layout_margin="8dp"
             android:elevation="6dp"
-            app:text="Sample SlideToActView"/>
+            app:area_margin="8dp"
+            app:rotate_icon="false"
+            app:border_color="@color/colorAccent"
+            app:outer_color="@color/colorPrimary"
+            app:inner_color="@color/colorAccent"
+            app:text="Sample SlideToActView"
+            app:slider_icon="@drawable/custom_icon"
+            app:border_radius="8dp"
+            app:fill_bg_gradient_start="#FF00FF"
+            app:fill_bg_gradient_end="#00FF00"
+            app:animate_completion="false"
+            />
 
         <TextView
             android:layout_width="match_parent"

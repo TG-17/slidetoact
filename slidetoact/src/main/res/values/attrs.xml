@@ -8,6 +8,7 @@
             <enum name="bold" value="1" />
             <enum name="italic" value="2" />
         </attr>
+        <attr name="allow_parent_touch_intercept" format="boolean" />
         <attr name="area_margin" format="dimension" />
         <attr name="border_color" format="color" />
         <attr name="inner_color" format="color" />

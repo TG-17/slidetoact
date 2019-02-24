@@ -204,6 +204,9 @@ class SlideToActView @JvmOverloads constructor(
     /** Public flag to lock the slider */
     var isLocked = false
 
+    /** inside scolling container you want to prevent parent to scroll*/
+    var allowParentTouchIntercept = false
+
     /** Public flag to lock the rotation icon */
     var isRotateIcon = true
 
@@ -247,6 +250,7 @@ class SlideToActView @JvmOverloads constructor(
             text = layoutAttrs.getString(R.styleable.SlideToActView_text)
             typeFace = layoutAttrs.getInt(R.styleable.SlideToActView_text_style, 0)
 
+            allowParentTouchIntercept = layoutAttrs.getBoolean(R.styleable.SlideToActView_allow_parent_touch_intercept, false)
             isLocked = layoutAttrs.getBoolean(R.styleable.SlideToActView_slider_locked, false)
             graceValue = layoutAttrs.getFloat(R.styleable.SlideToActView_grace_value, graceValue)
             isRotateIcon = layoutAttrs.getBoolean(R.styleable.SlideToActView_rotate_icon, true)
@@ -427,7 +431,9 @@ class SlideToActView @JvmOverloads constructor(
                     if (checkInsideButton(event.x, event.y)) {
                         mFlagMoving = true
                         mLastX = event.x
-                        parent.requestDisallowInterceptTouchEvent(true)
+                        if (allowParentTouchIntercept) {
+                            parent.requestDisallowInterceptTouchEvent(true)
+                        }
                     } else {
                         // Clicking outside the area -> User failed, notify the listener.
                         onSlideUserFailedListener?.onSlideFailed(this, true)
@@ -435,7 +441,9 @@ class SlideToActView @JvmOverloads constructor(
                     performClick()
                 }
                 MotionEvent.ACTION_UP -> {
-                    parent.requestDisallowInterceptTouchEvent(false)
+                    if (allowParentTouchIntercept) {
+                        parent.requestDisallowInterceptTouchEvent(false)
+                    }
                     if ((mPosition > 0 && isLocked) || (mPosition > 0 && mPositionPerc < graceValue)) {
                         // Check for grace value
                         val positionAnimator = ValueAnimator.ofInt(mPosition, 0)
@@ -463,6 +471,9 @@ class SlideToActView @JvmOverloads constructor(
                         increasePosition(diffX.toInt())
                         invalidateArea()
                     }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    resetSlider()
                 }
             }
             return true
@@ -612,9 +623,9 @@ class SlideToActView @JvmOverloads constructor(
      * Method that reset the slider
      */
     fun resetSlider() {
-        if (mIsCompleted) {
+//        if (mIsCompleted) {
             startAnimationReset()
-        }
+//        }
     }
 
     /**

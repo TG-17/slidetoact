@@ -86,7 +86,7 @@ class SlideToActView @JvmOverloads constructor(
             field = value
             mOuterStrokePaint.color = value
             mOuterStrokePaint.style = Paint.Style.STROKE
-            mOuterStrokePaint.strokeWidth = 10f
+            mOuterStrokePaint.strokeWidth = 2.5f * Resources.getSystem().displayMetrics.density
             invalidate()
         }
 
